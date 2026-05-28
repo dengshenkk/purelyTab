@@ -2,94 +2,133 @@ import SwiftUI
 
 struct WindowSwitcherView: View {
     let windows: [WindowInfo]
-    let columns: Int
+    let isSameAppMode: Bool
+    let selectedIndex: Int
     let onSelect: (WindowInfo) -> Void
     let onCancel: () -> Void
 
-    @State private var selectedIndex: Int = 0
-    @ObservedObject private var settings = SettingsManager.shared
+    @State private var currentSelection: Int
+
+    init(windows: [WindowInfo], isSameAppMode: Bool, selectedIndex: Int, onSelect: @escaping (WindowInfo) -> Void, onCancel: @escaping () -> Void) {
+        self.windows = windows
+        self.isSameAppMode = isSameAppMode
+        self.selectedIndex = selectedIndex
+        self.onSelect = onSelect
+        self.onCancel = onCancel
+        self._currentSelection = State(initialValue: selectedIndex)
+    }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Window grid
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(settings.thumbnailSize.width), spacing: 20), count: columns), spacing: 20) {
-                ForEach(Array(windows.enumerated()), id: \.element.id) { index, window in
-                    WindowThumbnailView(
-                        window: window,
-                        isSelected: index == selectedIndex,
-                        showTitle: settings.showWindowTitles
-                    )
-                    .onTapGesture {
-                        onSelect(window)
-                    }
-                    .onHover { isHovered in
-                        if isHovered {
-                            selectedIndex = index
+        VStack(spacing: 0) {
+            // 标题
+            HStack {
+                Text(isSameAppMode ? "切换同应用窗口" : "切换窗口")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text("⌘+Tab 下一个 | ⌘+Shift+Tab 上一个 | 松开 ⌘ 选择")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(Color(nsColor: .windowBackgroundColor))
+
+            Divider()
+
+            // 窗口列表
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(Array(windows.enumerated()), id: \.element.id) { index, window in
+                            WindowRowView(
+                                window: window,
+                                isSelected: index == currentSelection,
+                                index: index + 1
+                            )
+                            .id(index)
+                            .onTapGesture {
+                                onSelect(window)
+                            }
                         }
                     }
+                    .padding(.vertical, 4)
+                }
+                .frame(maxHeight: 400)
+                .onChange(of: currentSelection) { newValue in
+                    withAnimation {
+                        proxy.scrollTo(newValue, anchor: .center)
+                    }
+                }
+                .onAppear {
+                    proxy.scrollTo(currentSelection, anchor: .center)
                 }
             }
         }
-        .padding(40)
-        .background(
-            RoundedRectangle(cornerRadius: settings.cornerRadius)
-                .fill(Color(nsColor: settings.backgroundColor))
-                .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
-        )
+        .frame(width: 400)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .cornerRadius(10)
+        .shadow(color: .black.opacity(0.3), radius: 15, x: 0, y: 5)
         .onReceive(NotificationCenter.default.publisher(for: .windowSelectionChanged)) { notification in
             if let index = notification.userInfo?["index"] as? Int {
-                selectedIndex = index
+                currentSelection = index
             }
         }
     }
 }
 
-struct WindowThumbnailView: View {
+struct WindowRowView: View {
     let window: WindowInfo
     let isSelected: Bool
-    let showTitle: Bool
-
-    @ObservedObject private var settings = SettingsManager.shared
+    let index: Int
 
     var body: some View {
-        VStack(spacing: 8) {
-            // Window thumbnail
-            ZStack {
-                if let thumbnail = window.thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: settings.thumbnailSize.width, height: settings.thumbnailSize.height)
-                } else {
-                    // Placeholder when no thumbnail
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: settings.thumbnailSize.width, height: settings.thumbnailSize.height)
-                        .overlay(
-                            Image(systemName: "app.fill")
-                                .font(.largeTitle)
-                                .foregroundColor(.gray)
-                        )
-                }
+        HStack(spacing: 12) {
+            Text("\(index)")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundColor(isSelected ? .white : .secondary)
+                .frame(width: 24)
 
-                // Selection indicator
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color(nsColor: settings.borderColor), lineWidth: 3)
+            if let icon = getAppIcon(for: window.processId) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 24, height: 24)
+            } else {
+                Image(systemName: "app.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(isSelected ? .white : .secondary)
+                    .frame(width: 24, height: 24)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(window.ownerName)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(isSelected ? .white : .primary)
+
+                if !window.windowName.isEmpty && window.windowName != window.ownerName {
+                    Text(window.windowName)
+                        .font(.system(size: 11))
+                        .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+                        .lineLimit(1)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            // Window title
-            if showTitle {
-                Text(window.displayName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white)
-                    .lineLimit(1)
-                    .frame(width: settings.thumbnailSize.width)
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(isSelected ? Color.accentColor : Color.clear)
+        .cornerRadius(4)
+        .contentShape(Rectangle())
+    }
+
+    private func getAppIcon(for pid: pid_t) -> NSImage? {
+        let runningApps = NSWorkspace.shared.runningApplications
+        for app in runningApps {
+            if app.processIdentifier == pid {
+                return app.icon
             }
         }
-        .scaleEffect(isSelected ? 1.05 : 1.0)
-        .animation(.easeInOut(duration: 0.15), value: isSelected)
+        return nil
     }
 }

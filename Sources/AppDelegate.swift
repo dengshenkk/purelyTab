@@ -7,55 +7,93 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowManager: WindowManager!
     private var hotkeyManager: HotkeyManager!
     private var settingsWindow: NSWindow?
+    private var windows: [WindowInfo] = []
+    private var selectedIndex: Int = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide dock icon, show only in menu bar
-        NSApp.setActivationPolicy(.accessory)
-
-        // Initialize managers
-        windowManager = WindowManager()
-        hotkeyManager = HotkeyManager(windowManager: windowManager, appDelegate: self)
-
-        // Setup status bar item
         setupStatusBarItem()
 
-        // Setup hotkeys
-        hotkeyManager.setupHotkeys()
+        windowManager = WindowManager()
+        hotkeyManager = HotkeyManager(appDelegate: self)
+        hotkeyManager.setup()
 
-        // Load saved settings
-        loadSettings()
-
-        print("PurelyTab launched successfully")
+        NSApp.setActivationPolicy(.accessory)
+        print("PurelyTab launched")
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         hotkeyManager?.cleanup()
-        saveSettings()
     }
 
     private func setupStatusBarItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
-        if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "PurelyTab")
-            button.image?.isTemplate = true
-        }
+        guard let button = statusItem?.button else { return }
+
+        button.image = NSImage(systemSymbolName: "rectangle.3.group", accessibilityDescription: "PurelyTab")
+        button.image?.isTemplate = true
 
         let menu = NSMenu()
-
-        menu.addItem(NSMenuItem(title: NSLocalizedString("Show All Windows", comment: ""), action: #selector(showWindowSwitcher), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "切换窗口", action: #selector(showWindowSwitcher), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "切换同应用窗口", action: #selector(showSameAppWindowSwitcher), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: NSLocalizedString("Settings...", comment: ""), action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem(title: NSLocalizedString("Check for Updates...", comment: ""), action: #selector(checkForUpdates), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "设置", action: #selector(openSettings), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: NSLocalizedString("Quit PurelyTab", comment: ""), action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "q"))
 
         statusItem?.menu = menu
     }
 
     @objc func showWindowSwitcher() {
         windowManager.updateWindowList()
-        createAndShowWindowSwitcherPanel()
+        windows = windowManager.windows
+        selectedIndex = 0
+        createAndShowWindowSwitcher(sameAppMode: false)
+    }
+
+    @objc func showSameAppWindowSwitcher() {
+        windowManager.updateWindowList()
+
+        if let frontmostApp = NSWorkspace.shared.frontmostApplication {
+            let bundleId = frontmostApp.bundleIdentifier ?? ""
+            windows = windowManager.getWindowsForApp(bundleId: bundleId)
+            if windows.isEmpty {
+                windows = windowManager.windows.filter { $0.processId == frontmostApp.processIdentifier }
+            }
+        } else {
+            windows = []
+        }
+
+        selectedIndex = 0
+        createAndShowWindowSwitcher(sameAppMode: true)
+    }
+
+    func navigateNext() {
+        guard !windows.isEmpty else { return }
+        selectedIndex = (selectedIndex + 1) % windows.count
+        updateSelection()
+    }
+
+    func navigatePrevious() {
+        guard !windows.isEmpty else { return }
+        selectedIndex = (selectedIndex - 1 + windows.count) % windows.count
+        updateSelection()
+    }
+
+    private func updateSelection() {
+        NotificationCenter.default.post(
+            name: .windowSelectionChanged,
+            object: nil,
+            userInfo: ["index": selectedIndex]
+        )
+    }
+
+    func selectCurrentWindow() {
+        guard selectedIndex >= 0 && selectedIndex < windows.count else {
+            hideWindowSwitcher()
+            return
+        }
+        selectWindow(windows[selectedIndex])
     }
 
     @objc private func openSettings() {
@@ -64,71 +102,41 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let hostingController = NSHostingController(rootView: settingsView)
 
             settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 400),
-                styleMask: [.titled, .closable, .miniaturizable],
+                contentRect: NSRect(x: 0, y: 0, width: 450, height: 380),
+                styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
-            settingsWindow?.title = NSLocalizedString("PurelyTab Settings", comment: "")
+            settingsWindow?.title = "设置"
             settingsWindow?.contentViewController = hostingController
-            settingsWindow?.center()
         }
 
         settingsWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func checkForUpdates() {
-        // Auto-update placeholder - will be implemented with Sparkle in production
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString("Check for Updates", comment: "")
-        alert.informativeText = NSLocalizedString("Auto-update will be available in a future version.", comment: "")
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: NSLocalizedString("OK", comment: ""))
-        alert.runModal()
-    }
-
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
 
-    private func loadSettings() {
-        // Load user preferences from UserDefaults
-        _ = SettingsManager.shared
-    }
-
-    private func saveSettings() {
-        SettingsManager.shared.save()
-    }
-
-    private func createAndShowWindowSwitcherPanel() {
-        // Close existing panel if any
+    private func createAndShowWindowSwitcher(sameAppMode: Bool) {
         windowSwitcherPanel?.close()
 
-        let windows = windowManager.windows
         guard !windows.isEmpty else { return }
 
-        // Calculate panel size based on window count
-        let (columns, rows) = calculateGridDimensions(for: windows.count)
-        let cellSize = SettingsManager.shared.thumbnailSize
-        let spacing: CGFloat = 20
-        let padding: CGFloat = 40
-
-        let totalWidth = CGFloat(columns) * cellSize.width + CGFloat(columns - 1) * spacing + padding * 2
-        let totalHeight = CGFloat(rows) * cellSize.height + CGFloat(rows - 1) * spacing + padding * 2
-
-        // Get screen for display
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let screenFrame = screen.visibleFrame
 
+        let panelWidth: CGFloat = 400
+        let panelHeight: CGFloat = min(CGFloat(windows.count * 44 + 80), 500)
+
         let panelRect = NSRect(
-            x: screenFrame.midX - totalWidth / 2,
-            y: screenFrame.midY - totalHeight / 2,
-            width: totalWidth,
-            height: totalHeight
+            x: screenFrame.midX - panelWidth / 2,
+            y: screenFrame.midY - panelHeight / 2,
+            width: panelWidth,
+            height: panelHeight
         )
 
-        // Create panel
         windowSwitcherPanel = NSPanel(
             contentRect: panelRect,
             styleMask: [.borderless, .nonactivatingPanel],
@@ -142,10 +150,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowSwitcherPanel?.isOpaque = false
         windowSwitcherPanel?.hasShadow = true
 
-        // Create SwiftUI content
         let switcherView = WindowSwitcherView(
             windows: windows,
-            columns: columns,
+            isSameAppMode: sameAppMode,
+            selectedIndex: selectedIndex,
             onSelect: { [weak self] window in
                 self?.selectWindow(window)
             },
@@ -158,21 +166,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowSwitcherPanel?.contentView = hostingView
 
         windowSwitcherPanel?.makeKeyAndOrderFront(nil)
-
-        // Start keyboard navigation
-        hotkeyManager.startNavigationMode(with: windows)
-    }
-
-    private func calculateGridDimensions(for count: Int) -> (columns: Int, rows: Int) {
-        let maxColumns = SettingsManager.shared.maxColumns
-
-        if count <= maxColumns {
-            return (count, 1)
-        }
-
-        let columns = maxColumns
-        let rows = (count + columns - 1) / columns
-        return (columns, rows)
     }
 
     func selectWindow(_ window: WindowInfo) {
@@ -183,14 +176,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func hideWindowSwitcher() {
         windowSwitcherPanel?.close()
         windowSwitcherPanel = nil
-        hotkeyManager.stopNavigationMode()
+        hotkeyManager.setPanelVisible(false)
     }
+}
 
-    func navigateToNextWindow() {
-        hotkeyManager.navigateToNext()
-    }
-
-    func navigateToPreviousWindow() {
-        hotkeyManager.navigateToPrevious()
-    }
+extension Notification.Name {
+    static let windowSelectionChanged = Notification.Name("windowSelectionChanged")
 }

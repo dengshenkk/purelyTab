@@ -1,148 +1,140 @@
 import Cocoa
 
 class HotkeyManager {
-    private weak var windowManager: WindowManager?
     private weak var appDelegate: AppDelegate?
-
-    private var eventMonitor: Any?
-    private var flagsChangedMonitor: Any?
-
-    private var isNavigationMode = false
-    private var navigationWindows: [WindowInfo] = []
-    private var selectedIndex = 0
-
-    // Modifier tracking
+    private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
     private var isCommandPressed = false
-    private var isTabPressed = false
-    private var wasTabPressed = false
+    private var isPanelVisible = false
 
-    init(windowManager: WindowManager, appDelegate: AppDelegate) {
-        self.windowManager = windowManager
+    init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
     }
 
-    func setupHotkeys() {
-        // Global monitor for Cmd+Tab
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            self?.handleKeyEvent(event)
+    func setup() {
+        let eventMask = (1 << CGEventType.keyDown.rawValue) |
+                        (1 << CGEventType.flagsChanged.rawValue)
+
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: CGEventMask(eventMask),
+            callback: { proxy, type, event, refcon in
+                return HotkeyManager.handleEvent(proxy: proxy, type: type, event: event, refcon: refcon)
+            },
+            userInfo: UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        ) else {
+            print("Failed to create event tap - need Accessibility permission")
+            return
         }
 
-        // Monitor modifier flags changes
-        flagsChangedMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
-            self?.handleFlagsChanged(event)
-        }
+        eventTap = tap
+        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        print("Event tap created successfully")
     }
 
     func cleanup() {
-        if let monitor = eventMonitor {
-            NSEvent.removeMonitor(monitor)
-            eventMonitor = nil
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
         }
-        if let monitor = flagsChangedMonitor {
-            NSEvent.removeMonitor(monitor)
-            flagsChangedMonitor = nil
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
         }
     }
 
-    private func handleKeyEvent(_ event: NSEvent) {
-        // Check for Cmd+Tab
-        if event.modifierFlags.contains(.command) && event.keyCode == 48 { // 48 is Tab
-            if !isNavigationMode {
-                appDelegate?.showWindowSwitcher()
-            }
+    func setPanelVisible(_ visible: Bool) {
+        isPanelVisible = visible
+    }
+
+    private static func handleEvent(
+        proxy: CGEventTapProxy,
+        type: CGEventType,
+        event: CGEvent,
+        refcon: UnsafeMutableRawPointer?
+    ) -> Unmanaged<CGEvent>? {
+        guard let refcon = refcon else {
+            return Unmanaged.passRetained(event)
         }
 
-        // Handle navigation keys
-        if isNavigationMode {
-            switch event.keyCode {
-            case 48: // Tab
-                if event.modifierFlags.contains(.shift) {
-                    navigateToPrevious()
+        let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+
+        if type == .flagsChanged {
+            let flags = event.flags
+            let commandPressed = flags.contains(.maskCommand)
+
+            // Command 释放时选择当前窗口
+            if manager.isCommandPressed && !commandPressed && manager.isPanelVisible {
+                DispatchQueue.main.async {
+                    manager.appDelegate?.selectCurrentWindow()
+                }
+            }
+
+            manager.isCommandPressed = commandPressed
+            return Unmanaged.passRetained(event)
+        }
+
+        guard type == .keyDown else {
+            return Unmanaged.passRetained(event)
+        }
+
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        let flags = event.flags
+        let hasCommand = flags.contains(.maskCommand)
+
+        // Tab = 48 - 只有按住 Command 时才处理
+        if keyCode == 48 && hasCommand {
+            if !manager.isPanelVisible {
+                // 面板未显示，打开它
+                DispatchQueue.main.async {
+                    manager.appDelegate?.showWindowSwitcher()
+                    manager.isPanelVisible = true
+                }
+            } else {
+                // 面板已显示，导航
+                if flags.contains(.maskShift) {
+                    DispatchQueue.main.async {
+                        manager.appDelegate?.navigatePrevious()
+                    }
                 } else {
-                    navigateToNext()
+                    DispatchQueue.main.async {
+                        manager.appDelegate?.navigateNext()
+                    }
                 }
-            case 125, 126: // Down/Up arrow
-                navigateToNext()
-            case 124, 123: // Right/Left arrow
-                if event.keyCode == 124 {
-                    navigateToNext()
-                } else {
-                    navigateToPrevious()
-                }
-            case 36: // Return
-                if let window = navigationWindows[safe: selectedIndex] {
-                    appDelegate?.selectWindow(window)
-                }
-            case 53: // Escape
-                appDelegate?.hideWindowSwitcher()
-            default:
-                break
             }
-        }
-    }
-
-    private func handleFlagsChanged(_ event: NSEvent) {
-        let commandPressed = event.modifierFlags.contains(.command)
-
-        // Detect Cmd release while in navigation mode
-        if isNavigationMode && !commandPressed && isCommandPressed {
-            // Cmd was released, select current window
-            if let window = navigationWindows[safe: selectedIndex] {
-                appDelegate?.selectWindow(window)
-            }
+            return nil // 拦截事件
         }
 
-        isCommandPressed = commandPressed
-    }
+        // ` = 50 - 切换同应用窗口
+        if keyCode == 50 && hasCommand {
+            if !manager.isPanelVisible {
+                DispatchQueue.main.async {
+                    manager.appDelegate?.showSameAppWindowSwitcher()
+                    manager.isPanelVisible = true
+                }
+            }
+            return nil
+        }
 
-    func startNavigationMode(with windows: [WindowInfo]) {
-        isNavigationMode = true
-        navigationWindows = windows
-        selectedIndex = 0
-    }
+        // Escape = 53
+        if keyCode == 53 && manager.isPanelVisible {
+            DispatchQueue.main.async {
+                manager.appDelegate?.hideWindowSwitcher()
+                manager.isPanelVisible = false
+            }
+            return nil
+        }
 
-    func stopNavigationMode() {
-        isNavigationMode = false
-        navigationWindows = []
-        selectedIndex = 0
-    }
+        // Return = 36
+        if keyCode == 36 && manager.isPanelVisible {
+            DispatchQueue.main.async {
+                manager.appDelegate?.selectCurrentWindow()
+            }
+            return nil
+        }
 
-    func navigateToNext() {
-        guard !navigationWindows.isEmpty else { return }
-        selectedIndex = (selectedIndex + 1) % navigationWindows.count
-        notifySelectionChange()
-    }
-
-    func navigateToPrevious() {
-        guard !navigationWindows.isEmpty else { return }
-        selectedIndex = (selectedIndex - 1 + navigationWindows.count) % navigationWindows.count
-        notifySelectionChange()
-    }
-
-    func navigateToIndex(_ index: Int) {
-        guard index >= 0 && index < navigationWindows.count else { return }
-        selectedIndex = index
-        notifySelectionChange()
-    }
-
-    private func notifySelectionChange() {
-        // Post notification for UI update
-        NotificationCenter.default.post(
-            name: .windowSelectionChanged,
-            object: nil,
-            userInfo: ["index": selectedIndex]
-        )
-    }
-}
-
-// MARK: - Notification Extension
-extension Notification.Name {
-    static let windowSelectionChanged = Notification.Name("windowSelectionChanged")
-}
-
-// MARK: - Array Extension
-extension Array {
-    subscript(safe index: Int) -> Element? {
-        return indices.contains(index) ? self[index] : nil
+        return Unmanaged.passRetained(event)
     }
 }
