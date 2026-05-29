@@ -5,7 +5,7 @@
 
 set -e
 
-VERSION="1.2.0"
+VERSION="1.2.2"
 APP_NAME="PurelyTab"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 

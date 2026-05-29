@@ -94,12 +94,12 @@ git branch -d release/X.Y.Z
 
 | 文件 | 字段/位置 | 说明 | 当前版本 |
 |------|-----------|------|----------|
-| `package.sh` | `VERSION` | 打包脚本版本 | 1.2.0 |
-| `release.sh` | `VERSION` | 发布脚本版本 | 1.2.0 |
-| `SettingsView.swift` | 顶部标题 `v1.2.0` | 设置页顶部版本显示 | 1.2.0 |
-| `SettingsView.swift` | 关于区域 `1.2.0` | 设置页关于版本信息 | 1.2.0 |
-| `Info.plist` | `CFBundleVersion` | 应用版本（自动生成） | 1.2.0 |
-| `Info.plist` | `CFBundleShortVersionString` | 显示版本（自动生成） | 1.2.0 |
+| `package.sh` | `VERSION` | 打包脚本版本 | 1.2.2 |
+| `release.sh` | `VERSION` | 发布脚本版本 | 1.2.2 |
+| `SettingsView.swift` | 顶部标题 `v1.2.2` | 设置页顶部版本显示 | 1.2.2 |
+| `SettingsView.swift` | 关于区域 `1.2.2` | 设置页关于版本信息 | 1.2.2 |
+| `Info.plist` | `CFBundleVersion` | 应用版本（自动生成） | 1.2.2 |
+| `Info.plist` | `CFBundleShortVersionString` | 显示版本（自动生成） | 1.2.2 |
 
 ## 🔍 发布前检查清单
 

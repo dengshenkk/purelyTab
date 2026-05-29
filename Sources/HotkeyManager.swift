@@ -1,4 +1,5 @@
 import Cocoa
+import Carbon
 
 class HotkeyManager {
     private weak var appDelegate: AppDelegate?
@@ -8,11 +9,93 @@ class HotkeyManager {
     private var isPanelVisible = false
     private var isSameAppMode = false
 
+    // Carbon 热键引用
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyID = EventHotKeyID(signature: OSType(0x5054), id: 1) // PT
+
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
     }
 
     func setup() {
+        // 注册 Carbon 热键拦截系统 ⌘+Tab
+        registerCarbonHotKey()
+
+        // 保留 CGEventTap 处理其他按键（`、Escape、Return 等）
+        setupEventTap()
+    }
+
+    private func registerCarbonHotKey() {
+        // 安装事件处理器
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        // 注册回调
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { (_, event, _) -> OSStatus in
+                // 在回调中处理热键
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .carbonHotKeyPressed, object: nil)
+                }
+                return noErr
+            },
+            1,
+            &eventType,
+            nil,
+            nil
+        )
+
+        guard status == noErr else {
+            print("Failed to install Carbon event handler: \(status)")
+            return
+        }
+
+        // 注册 ⌘+Tab 热键
+        let modifiers = UInt32(cmdKey)
+        let keyCode: UInt32 = 48 // Tab key
+
+        hotKeyID.signature = OSType(0x5054) // 'PT'
+        hotKeyID.id = 1
+
+        let regStatus = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyID,
+            GetApplicationEventTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        if regStatus == noErr {
+            print("Carbon hotkey registered successfully")
+        } else {
+            print("Failed to register Carbon hotkey: \(regStatus)")
+        }
+
+        // 监听热键通知
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCarbonHotKey),
+            name: .carbonHotKeyPressed,
+            object: nil
+        )
+    }
+
+    @objc private func handleCarbonHotKey() {
+        print("Carbon hotkey triggered")
+        if !isPanelVisible {
+            appDelegate?.showWindowSwitcher()
+            isPanelVisible = true
+            isSameAppMode = false
+        } else if !isSameAppMode {
+            appDelegate?.navigateNext()
+        }
+    }
+
+    private func setupEventTap() {
         let eventMask = (1 << CGEventType.keyDown.rawValue) |
                         (1 << CGEventType.flagsChanged.rawValue)
 
@@ -38,6 +121,15 @@ class HotkeyManager {
     }
 
     func cleanup() {
+        // 注销 Carbon 热键
+        if let ref = hotKeyRef {
+            UnregisterEventHotKey(ref)
+        }
+
+        // 清理事件处理器
+        NotificationCenter.default.removeObserver(self)
+
+        // 清理 CGEventTap
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -89,29 +181,6 @@ class HotkeyManager {
 
         print("Key pressed: keyCode=\(keyCode), hasModifier=\(hasModifier), isPanelVisible=\(manager.isPanelVisible)")
 
-        // Tab = 48
-        if keyCode == settings.switchAllKey && hasModifier {
-            print("Tab with modifier detected")
-            if !manager.isPanelVisible {
-                DispatchQueue.main.async {
-                    manager.appDelegate?.showWindowSwitcher()
-                    manager.isPanelVisible = true
-                    manager.isSameAppMode = false
-                }
-            } else if !manager.isSameAppMode {
-                if flags.contains(.maskShift) {
-                    DispatchQueue.main.async {
-                        manager.appDelegate?.navigatePrevious()
-                    }
-                } else {
-                    DispatchQueue.main.async {
-                        manager.appDelegate?.navigateNext()
-                    }
-                }
-            }
-            return nil
-        }
-
         // ` = 50
         if keyCode == settings.switchSameAppKey {
             print("` key detected, hasModifier=\(hasModifier), isPanelVisible=\(manager.isPanelVisible)")
@@ -151,4 +220,8 @@ class HotkeyManager {
 
         return Unmanaged.passRetained(event)
     }
+}
+
+extension Notification.Name {
+    static let carbonHotKeyPressed = Notification.Name("carbonHotKeyPressed")
 }
