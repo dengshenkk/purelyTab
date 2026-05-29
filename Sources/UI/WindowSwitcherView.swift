@@ -129,6 +129,14 @@ struct WindowRowView: View {
             }
 
             Spacer()
+
+            // 最小化状态标识
+            if window.isMinimized {
+                Image(systemName: "minus.circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(isSelected ? .white.opacity(0.8) : .secondary)
+                    .help("最小化")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

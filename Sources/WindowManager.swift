@@ -9,6 +9,7 @@ struct WindowInfo: Identifiable {
     let boundsX: CGFloat
     let boundsY: CGFloat
     let indexInApp: Int
+    let isMinimized: Bool
 
     var displayName: String {
         if !windowName.isEmpty && windowName != ownerName {
@@ -48,7 +49,7 @@ class WindowManager {
         }
 
         // 先按应用收集原始窗口，再分配 index
-        var rawWindows: [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat)] = []
+        var rawWindows: [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat, isMinimized: Bool)] = []
 
         for windowInfo in windowList {
             guard let ownerName = windowInfo[kCGWindowOwnerName as String] as? String,
@@ -68,8 +69,12 @@ class WindowManager {
             let bx = boundsDict["X"] ?? 0
             let by = boundsDict["Y"] ?? 0
 
-            rawWindows.append((info: windowInfo, pid: processID, bx: bx, by: by))
+            rawWindows.append((info: windowInfo, pid: processID, bx: bx, by: by, isMinimized: false))
         }
+
+        // 获取最小化窗口（通过 AXUIElement API）
+        let minimizedWindows = getMinimizedWindows(runningApps: runningApps, menuBarApps: menuBarApps)
+        rawWindows.append(contentsOf: minimizedWindows)
 
         // 按应用分配 index
         var appIndexMap: [pid_t: Int] = [:]
@@ -108,7 +113,8 @@ class WindowManager {
                 bundleIdentifier: bundleId,
                 boundsX: raw.bx,
                 boundsY: raw.by,
-                indexInApp: idx + 1
+                indexInApp: idx + 1,
+                isMinimized: raw.isMinimized
             )
 
             result.append(info)
@@ -129,7 +135,7 @@ class WindowManager {
             if !duplicates.isEmpty {
                 // 有重复标题，需要给这些窗口添加序号
                 var titleIndexMap: [String: Int] = [:]
-                for (i, var window) in result.enumerated() {
+                for (i, window) in result.enumerated() {
                     let key = window.bundleIdentifier ?? window.ownerName
                     if key == appKey {
                         let title = window.displayName
@@ -145,7 +151,8 @@ class WindowManager {
                                 bundleIdentifier: window.bundleIdentifier,
                                 boundsX: window.boundsX,
                                 boundsY: window.boundsY,
-                                indexInApp: window.indexInApp
+                                indexInApp: window.indexInApp,
+                                isMinimized: window.isMinimized
                             )
                         }
                     }
@@ -155,6 +162,80 @@ class WindowManager {
 
         windows = result
         windowsByApp = byApp
+    }
+
+    private func getMinimizedWindows(runningApps: [NSRunningApplication], menuBarApps: Set<pid_t>) -> [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat, isMinimized: Bool)] {
+        var minimized: [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat, isMinimized: Bool)] = []
+
+        for app in runningApps {
+            let pid = app.processIdentifier
+
+            if pid == getpid() { continue }
+            if menuBarApps.contains(pid) { continue }
+            if app.activationPolicy == .accessory { continue }
+
+            let appRef = AXUIElementCreateApplication(pid)
+            var value: CFTypeRef?
+
+            guard AXUIElementCopyAttributeValue(appRef, kAXWindowsAttribute as CFString, &value) == .success,
+                  let axWindows = value as? [AXUIElement] else {
+                continue
+            }
+
+            for axWindow in axWindows {
+                // 检查是否最小化
+                var minimizedValue: CFTypeRef?
+                let minimizedResult = AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedValue)
+
+                guard minimizedResult == .success,
+                      let isMinimized = minimizedValue as? Bool,
+                      isMinimized else {
+                    continue
+                }
+
+                // 获取窗口标题
+                var titleValue: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleValue)
+                let title = titleValue as? String ?? ""
+
+                // 获取窗口位置（最小化窗口位置可能为 0,0）
+                var posValue: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posValue)
+                var point = CGPoint.zero
+                if let pos = posValue {
+                    AXValueGetValue(pos as! AXValue, .cgPoint, &point)
+                }
+
+                // 获取窗口大小
+                var sizeValue: CFTypeRef?
+                AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeValue)
+                var size = CGSize.zero
+                if let sizeRef = sizeValue {
+                    AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
+                }
+
+                // 创建一个伪窗口 ID（使用 PID 和位置组合）
+                // 注意：最小化窗口在 CGWindowList 中不存在，所以我们创建一个特殊的 ID
+                let pseudoWindowID = CGWindowID(pid) * 1000 + CGWindowID(minimized.count)
+
+                let info: [String: Any] = [
+                    kCGWindowNumber as String: pseudoWindowID,
+                    kCGWindowOwnerName as String: app.localizedName ?? "Unknown",
+                    kCGWindowName as String: title,
+                    kCGWindowOwnerPID as String: pid,
+                    kCGWindowBounds as String: [
+                        "X": point.x,
+                        "Y": point.y,
+                        "Width": size.width,
+                        "Height": size.height
+                    ]
+                ]
+
+                minimized.append((info: info, pid: pid, bx: point.x, by: point.y, isMinimized: true))
+            }
+        }
+
+        return minimized
     }
 
     private func buildAXTitleCache() {
@@ -211,6 +292,13 @@ class WindowManager {
         }
 
         for axWindow in axWindows {
+            // 如果窗口是最小化，先取消最小化
+            if window.isMinimized {
+                AXUIElementSetAttributeValue(axWindow, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                // 等待窗口恢复
+                usleep(100000) // 100ms
+            }
+
             var posValue: CFTypeRef?
             AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posValue)
             guard let pos = posValue else { continue }
@@ -221,6 +309,26 @@ class WindowManager {
                 AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
                 AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
                 return
+            }
+        }
+
+        // 如果是通过伪 ID 标识的最小化窗口，可能无法通过位置匹配
+        // 此时直接尝试取消最小化并激活应用
+        if window.isMinimized {
+            // 找到第一个最小化窗口并恢复
+            for axWindow in axWindows {
+                var minimizedValue: CFTypeRef?
+                let minimizedResult = AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedValue)
+
+                if minimizedResult == .success,
+                   let isMinimized = minimizedValue as? Bool,
+                   isMinimized {
+                    AXUIElementSetAttributeValue(axWindow, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+                    usleep(100000)
+                    AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+                    AXUIElementSetAttributeValue(axWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+                    return
+                }
             }
         }
     }

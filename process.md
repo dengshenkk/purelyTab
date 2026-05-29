@@ -171,3 +171,78 @@ https://github.com/dengshenkk/purelyTab
 ### 提交推送
 - commit: a5c28fe
 - 已推送到 GitHub: https://github.com/dengshenkk/purelyTab
+
+---
+
+## 2026-05-29 支持最小化窗口
+
+### 用户需求
+- 最小化的窗口也能显示在窗口列表中
+- 切换到最小化窗口时自动拉起并激活该窗口
+
+### 技术分析
+- 当前使用 `.optionOnScreenOnly` 只获取屏幕上的窗口
+- 最小化窗口不会出现在 CGWindowList 结果中
+- 需要使用 AXUIElement API 获取最小化窗口信息
+- 激活时需要设置 kAXMinimizedAttribute 为 false
+
+### Step 1: 分析代码结构
+- 输入：WindowManager.swift, WindowSwitcherView.swift
+- 操作：阅读源代码，了解当前实现
+- 输出：
+  - WindowInfo 结构体需要添加 isMinimized 属性
+  - updateWindowList 需要使用 AXUIElement 获取最小化窗口
+  - activateWindow 需要支持取消最小化
+- 结论：需要修改 WindowManager 以支持最小化窗口
+- 状态：✅ 完成
+
+---
+
+### Step 2: 修改 WindowInfo 结构体
+- 输入：WindowInfo 结构体
+- 操作：添加 isMinimized: Bool 属性
+- 输出：WindowInfo 现在包含 isMinimized 属性
+- 结论：数据结构已更新
+- 状态：✅ 完成
+
+---
+
+### Step 3: 修改 updateWindowList 方法
+- 输入：WindowManager.updateWindowList()
+- 操作：
+  1. 保留 CGWindowList 获取正常窗口
+  2. 使用 AXUIElement API 获取最小化窗口
+  3. 合并两个列表
+- 输出：窗口列表包含最小化窗口
+- 结论：实现了最小化窗口的获取
+- 状态：✅ 完成
+
+---
+
+### Step 4: 修改 activateWindow 方法
+- 输入：WindowManager.activateWindow()
+- 操作：
+  1. 检查窗口是否最小化
+  2. 如果最小化，设置 kAXMinimizedAttribute 为 false
+  3. 激活窗口
+- 输出：可以拉起最小化窗口
+- 结论：实现了最小化窗口的拉起功能
+- 状态：✅ 完成
+
+---
+
+### Step 5: 更新 UI 显示
+- 输入：WindowRowView
+- 操作：
+  1. 添加最小化图标标识
+  2. 显示"最小化"文字提示
+- 输出：用户可以识别最小化窗口
+- 结论：UI 已更新
+- 状态：✅ 完成
+
+---
+
+### 功能实现完成
+- ✅ 最小化窗口显示在列表中
+- ✅ 切换时自动拉起最小化窗口
+- ✅ UI 显示最小化状态标识

@@ -9,4 +9,16 @@
 - [x] 5. 提供配置选项来配置快捷键, 默认是cmd+tab(cmd+`)
 - [x] 6. 提供配置选项来隐藏菜单栏图标
 
+## 最小化窗口支持
+
+- [x] 1. 在 WindowInfo 结构体中添加 isMinimized 属性
+- [x] 2. 修改 updateWindowList 获取最小化窗口（修改 CGWindowListOption）
+- [x] 3. 使用 Accessibility API 获取最小化窗口信息
+- [x] 4. 修改 activateWindow 方法支持拉起最小化窗口
+- [x] 5. 在 UI 中显示最小化状态标识
+
 ## 状态：已完成 ✅
+
+---
+
+**完成时间**: 2026-05-29
