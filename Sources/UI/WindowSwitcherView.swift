@@ -26,9 +26,11 @@ struct WindowSwitcherView: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text("⌘+Tab 下一个 | ⌘+Shift+Tab 上一个 | 松开 ⌘ 选择")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                if !windows.isEmpty {
+                    Text("⌘+Tab 下一个 | ⌘+Shift+Tab 上一个 | 松开 ⌘ 选择")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -36,7 +38,19 @@ struct WindowSwitcherView: View {
 
             Divider()
 
-            // 窗口列表
+            if windows.isEmpty {
+                // 空状态提示
+                VStack(spacing: 8) {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 28))
+                        .foregroundColor(.secondary.opacity(0.5))
+                    Text("当前应用没有其他窗口")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 36)
+            } else {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 2) {
@@ -64,6 +78,7 @@ struct WindowSwitcherView: View {
                     proxy.scrollTo(currentSelection, anchor: .center)
                 }
             }
+            } // end else
         }
         .frame(width: 400)
         .background(Color(nsColor: .windowBackgroundColor))

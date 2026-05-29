@@ -1,0 +1,110 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: swift build -c release
+
+      - name: Package app bundle
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          APP_NAME="PurelyTab"
+
+          mkdir -p "build/${APP_NAME}.app/Contents/MacOS"
+          mkdir -p "build/${APP_NAME}.app/Contents/Resources"
+
+          cp ".build/release/${APP_NAME}" "build/${APP_NAME}.app/Contents/MacOS/"
+
+          if [ -f PurelyTab.icns ]; then
+            cp PurelyTab.icns "build/${APP_NAME}.app/Contents/Resources/"
+          fi
+
+          cat > "build/${APP_NAME}.app/Contents/Info.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.purelytab.app</string>
+              <key>CFBundleName</key>
+              <string>${APP_NAME}</string>
+              <key>CFBundleVersion</key>
+              <string>${VERSION}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${VERSION}</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>12.0</string>
+              <key>LSUIElement</key>
+              <true/>
+              <key>CFBundleIconFile</key>
+              <string>PurelyTab</string>
+              <key>NSHighResolutionProcessCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          cat > "build/${APP_NAME}.app/Contents/Entitlements.plist" << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>com.apple.security.app-sandbox</key>
+              <false/>
+              <key>com.apple.security.automation.apple-events</key>
+              <true/>
+              <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+              <true/>
+              <key>com.apple.security.cs.disable-library-validation</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          cp -R Resources/en.lproj "build/${APP_NAME}.app/Contents/Resources/" 2>/dev/null || true
+          cp -R Resources/zh_CN.lproj "build/${APP_NAME}.app/Contents/Resources/" 2>/dev/null || true
+
+      - name: Create DMG
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          APP_NAME="PurelyTab"
+          DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+
+          rm -rf "/tmp/${APP_NAME}_dmg"
+          mkdir -p "/tmp/${APP_NAME}_dmg"
+          cp -R "build/${APP_NAME}.app" "/tmp/${APP_NAME}_dmg/"
+          ln -s /Applications "/tmp/${APP_NAME}_dmg/Applications"
+
+          hdiutil create -volname "${APP_NAME}" \
+              -srcfolder "/tmp/${APP_NAME}_dmg" \
+              -ov -format UDZO \
+              "build/${DMG_NAME}"
+
+          rm -rf "/tmp/${APP_NAME}_dmg"
+          echo "DMG_NAME=${DMG_NAME}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ env.DMG_NAME }}
+          generate_release_notes: true

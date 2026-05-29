@@ -72,18 +72,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let frontmostApp = lastFrontmostApp {
             let bundleId = frontmostApp.bundleIdentifier ?? ""
             windows = windowManager.getWindowsForApp(bundleId: bundleId)
-
-            if windows.count <= 1 {
-                windows = windowManager.windows
-            }
-
-            selectedIndex = 0
         } else {
-            windows = windowManager.windows
-            selectedIndex = 0
+            windows = []
         }
 
-        guard !windows.isEmpty else { return }
+        selectedIndex = 0
 
         createAndShowWindowSwitcher(sameAppMode: true)
         hotkeyManager.setPanelVisible(true, sameApp: true)
@@ -145,10 +138,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func createAndShowWindowSwitcher(sameAppMode: Bool) {
         windowSwitcherPanel?.close()
 
-        guard !windows.isEmpty else { return }
+        if !sameAppMode && windows.isEmpty { return }
 
         let panelWidth: CGFloat = 400
-        let panelHeight: CGFloat = min(CGFloat(windows.count * 44 + 80), 500)
+        let panelHeight: CGFloat = windows.isEmpty ? 160 : min(CGFloat(windows.count * 44 + 80), 500)
 
         let panelRect: NSRect
         let settings = SettingsManager.shared
