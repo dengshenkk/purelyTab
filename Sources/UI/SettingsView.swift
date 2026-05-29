@@ -12,6 +12,7 @@ struct SettingsView: View {
 
             Divider()
 
+            // 菜单栏设置
             GroupBox(label: Text("菜单栏").fontWeight(.semibold)) {
                 VStack(alignment: .leading, spacing: 12) {
                     Toggle("显示菜单栏图标", isOn: Binding(
@@ -30,30 +31,63 @@ struct SettingsView: View {
                 .padding()
             }
 
-            GroupBox(label: Text("使用说明").fontWeight(.semibold)) {
+            // 快捷键设置
+            GroupBox(label: Text("快捷键").fontWeight(.semibold)) {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Image(systemName: "command")
-                        Text("+ Tab")
-                        Spacer()
-                        Text("系统窗口切换")
-                            .foregroundColor(.secondary)
+                    Picker("修饰键:", selection: $settings.modifierKey) {
+                        Text("⌘ Command").tag("command")
+                        Text("⌥ Option").tag("option")
+                        Text("⌃ Control").tag("control")
                     }
-
-                    HStack {
-                        Image(systemName: "command")
-                        Text("+ `")
-                        Spacer()
-                        Text("系统同应用切换")
-                            .foregroundColor(.secondary)
+                    .pickerStyle(.radioGroup)
+                    .onChange(of: settings.modifierKey) { _ in
+                        settings.save()
                     }
 
                     Divider()
 
-                    Text("点击菜单栏图标可手动切换窗口")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("切换所有窗口:")
+                            Spacer()
+                            Text(getModifierSymbol() + "+Tab")
+                                .font(.system(.body, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+
+                        HStack {
+                            Text("切换同应用窗口:")
+                            Spacer()
+                            Text(getModifierSymbol() + "+`")
+                                .font(.system(.body, design: .monospaced))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+
+                        Text("打开列表后，按 ` 可循环到下一个窗口")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .padding()
+            }
+
+            // 使用说明
+            GroupBox(label: Text("操作说明").fontWeight(.semibold)) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("• \(getModifierSymbol())+Tab 打开窗口列表")
+                    Text("• Tab / Shift+Tab 导航")
+                    Text("• ` 循环到下一个窗口")
+                    Text("• 松开 \(getModifierSymbol()) 选择当前窗口")
+                    Text("• Esc 取消")
+                }
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
                 .padding()
             }
 
@@ -67,6 +101,17 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 450, height: 380)
+        .frame(width: 450, height: 500)
+    }
+
+    private func getModifierSymbol() -> String {
+        switch settings.modifierKey {
+        case "option":
+            return "⌥"
+        case "control":
+            return "⌃"
+        default:
+            return "⌘"
+        }
     }
 }

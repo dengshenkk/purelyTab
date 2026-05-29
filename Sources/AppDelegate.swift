@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private var windows: [WindowInfo] = []
     private var selectedIndex: Int = 0
+    private var lastFrontmostApp: NSRunningApplication?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBarItem()
@@ -42,30 +43,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "退出", action: #selector(quitApp), keyEquivalent: "q"))
 
         statusItem?.menu = menu
+        updateStatusBarVisibility()
+    }
+
+    func updateStatusBarVisibility() {
+        statusItem?.isVisible = SettingsManager.shared.showInMenuBar
     }
 
     @objc func showWindowSwitcher() {
+        lastFrontmostApp = NSWorkspace.shared.frontmostApplication
         windowManager.updateWindowList()
         windows = windowManager.windows
-        selectedIndex = 0
+
+        if let currentIndex = windowManager.getCurrentWindowIndex() {
+            selectedIndex = currentIndex
+        } else {
+            selectedIndex = 0
+        }
+
         createAndShowWindowSwitcher(sameAppMode: false)
+        hotkeyManager.setPanelVisible(true, sameApp: false)
     }
 
     @objc func showSameAppWindowSwitcher() {
+        lastFrontmostApp = NSWorkspace.shared.frontmostApplication
         windowManager.updateWindowList()
 
-        if let frontmostApp = NSWorkspace.shared.frontmostApplication {
+        print("=== showSameAppWindowSwitcher ===")
+        if let frontmostApp = lastFrontmostApp {
             let bundleId = frontmostApp.bundleIdentifier ?? ""
             windows = windowManager.getWindowsForApp(bundleId: bundleId)
-            if windows.isEmpty {
-                windows = windowManager.windows.filter { $0.processId == frontmostApp.processIdentifier }
+            print("BundleId: \(bundleId), windows found: \(windows.count)")
+
+            if windows.count <= 1 {
+                // 如果只有一个窗口，显示所有窗口
+                windows = windowManager.windows
+                print("Falling back to all windows: \(windows.count)")
             }
+
+            selectedIndex = 0
         } else {
-            windows = []
+            windows = windowManager.windows
+            selectedIndex = 0
         }
 
-        selectedIndex = 0
+        guard !windows.isEmpty else {
+            print("No windows to show")
+            return
+        }
+
         createAndShowWindowSwitcher(sameAppMode: true)
+        hotkeyManager.setPanelVisible(true, sameApp: true)
     }
 
     func navigateNext() {
@@ -98,11 +126,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         if settingsWindow == nil {
-            let settingsView = SettingsView()
+            let settingsView = SettingsView(onStatusVisibilityChange: { [weak self] in
+                self?.updateStatusBarVisibility()
+            })
             let hostingController = NSHostingController(rootView: settingsView)
 
             settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 450, height: 380),
+                contentRect: NSRect(x: 0, y: 0, width: 450, height: 450),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
@@ -166,6 +196,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowSwitcherPanel?.contentView = hostingView
 
         windowSwitcherPanel?.makeKeyAndOrderFront(nil)
+        print("Panel shown with \(windows.count) windows")
     }
 
     func selectWindow(_ window: WindowInfo) {

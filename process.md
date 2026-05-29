@@ -149,3 +149,25 @@ https://github.com/dengshenkk/purelyTab
 - 使用 NSEvent.addLocalMonitorForEvents + addGlobalMonitorForEvents
 - 不需要辅助功能权限
 - ⌘+Tab 显示窗口列表，松开 ⌘ 关闭列表
+
+---
+
+## 2026-05-28 最终修复
+
+### 问题
+- 单独按 Tab 键会被拦截
+- 列表导航时不自动滚动
+
+### 解决方案
+- Tab 只有在按住 ⌘ 时才处理
+- 使用 ScrollViewReader 自动滚动到当前选中项
+
+### 功能确认
+- ⌘+Tab 打开列表 / 下一个
+- ⌘+Shift+Tab 上一个
+- 松开 ⌘ 选择
+- 单独 Tab 无操作
+
+### 提交推送
+- commit: a5c28fe
+- 已推送到 GitHub: https://github.com/dengshenkk/purelyTab

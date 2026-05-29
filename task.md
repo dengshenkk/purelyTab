@@ -32,3 +32,10 @@ git branch -M main
 git remote add origin git@github.com:dengshenkk/purelyTab.git
 git push -u origin main
 ```
+
+1. 排除菜单栏上的应用以及没有窗口的应用
+2. cmd+tab(cmd+`)打开列表时默认选中当前窗口项
+3. cmd+tab(cmd+`)打开窗口后按`可以切换到下一个窗口直到循环到第一个窗口
+4. 选定窗口后快速打开该窗口, 不要有卡顿或者性能问题
+5. 提供配置选项来配置快捷键, 默认是cmd+tab(cmd+`)
+6. 提供配置选项来隐藏菜单栏图标

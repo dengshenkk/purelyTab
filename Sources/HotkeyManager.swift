@@ -4,8 +4,9 @@ class HotkeyManager {
     private weak var appDelegate: AppDelegate?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var isCommandPressed = false
+    private var isModifierPressed = false
     private var isPanelVisible = false
+    private var isSameAppMode = false
 
     init(appDelegate: AppDelegate) {
         self.appDelegate = appDelegate
@@ -45,8 +46,9 @@ class HotkeyManager {
         }
     }
 
-    func setPanelVisible(_ visible: Bool) {
+    func setPanelVisible(_ visible: Bool, sameApp: Bool = false) {
         isPanelVisible = visible
+        isSameAppMode = sameApp
     }
 
     private static func handleEvent(
@@ -60,19 +62,20 @@ class HotkeyManager {
         }
 
         let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+        let settings = SettingsManager.shared
+        let modifierFlags = settings.getModifierFlags()
 
         if type == .flagsChanged {
             let flags = event.flags
-            let commandPressed = flags.contains(.maskCommand)
+            let modifierPressed = flags.contains(modifierFlags)
 
-            // Command 释放时选择当前窗口
-            if manager.isCommandPressed && !commandPressed && manager.isPanelVisible {
+            if manager.isModifierPressed && !modifierPressed && manager.isPanelVisible {
                 DispatchQueue.main.async {
                     manager.appDelegate?.selectCurrentWindow()
                 }
             }
 
-            manager.isCommandPressed = commandPressed
+            manager.isModifierPressed = modifierPressed
             return Unmanaged.passRetained(event)
         }
 
@@ -82,18 +85,20 @@ class HotkeyManager {
 
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
-        let hasCommand = flags.contains(.maskCommand)
+        let hasModifier = flags.contains(modifierFlags)
 
-        // Tab = 48 - 只有按住 Command 时才处理
-        if keyCode == 48 && hasCommand {
+        print("Key pressed: keyCode=\(keyCode), hasModifier=\(hasModifier), isPanelVisible=\(manager.isPanelVisible)")
+
+        // Tab = 48
+        if keyCode == settings.switchAllKey && hasModifier {
+            print("Tab with modifier detected")
             if !manager.isPanelVisible {
-                // 面板未显示，打开它
                 DispatchQueue.main.async {
                     manager.appDelegate?.showWindowSwitcher()
                     manager.isPanelVisible = true
+                    manager.isSameAppMode = false
                 }
-            } else {
-                // 面板已显示，导航
+            } else if !manager.isSameAppMode {
                 if flags.contains(.maskShift) {
                     DispatchQueue.main.async {
                         manager.appDelegate?.navigatePrevious()
@@ -104,18 +109,27 @@ class HotkeyManager {
                     }
                 }
             }
-            return nil // 拦截事件
+            return nil
         }
 
-        // ` = 50 - 切换同应用窗口
-        if keyCode == 50 && hasCommand {
-            if !manager.isPanelVisible {
+        // ` = 50
+        if keyCode == settings.switchSameAppKey {
+            print("` key detected, hasModifier=\(hasModifier), isPanelVisible=\(manager.isPanelVisible)")
+            if hasModifier && !manager.isPanelVisible {
+                print("Opening same app window switcher")
                 DispatchQueue.main.async {
                     manager.appDelegate?.showSameAppWindowSwitcher()
                     manager.isPanelVisible = true
+                    manager.isSameAppMode = true
                 }
+                return nil
+            } else if manager.isPanelVisible {
+                print("Navigating next in panel")
+                DispatchQueue.main.async {
+                    manager.appDelegate?.navigateNext()
+                }
+                return nil
             }
-            return nil
         }
 
         // Escape = 53
