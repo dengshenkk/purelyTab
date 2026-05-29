@@ -1,6 +1,6 @@
 #!/bin/bash
 
-VERSION="1.0.0"
+VERSION="1.2.0"
 APP_NAME="PurelyTab"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
 
