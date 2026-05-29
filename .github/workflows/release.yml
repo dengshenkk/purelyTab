@@ -18,8 +18,15 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build
-        run: swift build -c release
+      - name: Build universal binary
+        run: |
+          swift build -c release --arch arm64
+          swift build -c release --arch x86_64
+          lipo -create \
+            .build/arm64-apple-macosx/release/PurelyTab \
+            .build/x86_64-apple-macosx/release/PurelyTab \
+            -output .build/release/PurelyTab
+          lipo -info .build/release/PurelyTab
 
       - name: Package app bundle
         env:
