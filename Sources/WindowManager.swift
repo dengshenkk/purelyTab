@@ -23,8 +23,17 @@ class WindowManager {
     private(set) var windows: [WindowInfo] = []
     private(set) var windowsByApp: [String: [WindowInfo]] = [:]
     private var axWindowTitleCache: [pid_t: [(title: String, x: CGFloat, y: CGFloat)]] = [:]
+    private var minimizedWindowsCache: [WindowInfo] = []
+    private var lastUpdateTime: Date = Date.distantPast
+    private let cacheTimeout: TimeInterval = 2.0 // 2秒缓存
 
     func updateWindowList() {
+        let now = Date()
+        // 如果距离上次更新不超过2秒，使用缓存
+        if now.timeIntervalSince(lastUpdateTime) < cacheTimeout && !windows.isEmpty {
+            return
+        }
+
         buildAXTitleCache()
 
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
@@ -72,9 +81,25 @@ class WindowManager {
             rawWindows.append((info: windowInfo, pid: processID, bx: bx, by: by, isMinimized: false))
         }
 
-        // 获取最小化窗口（通过 AXUIElement API）
-        let minimizedWindows = getMinimizedWindows(runningApps: runningApps, menuBarApps: menuBarApps)
-        rawWindows.append(contentsOf: minimizedWindows)
+        // 获取最小化窗口（使用缓存）
+        if now.timeIntervalSince(lastUpdateTime) >= cacheTimeout {
+            minimizedWindowsCache = getMinimizedWindows(runningApps: runningApps, menuBarApps: menuBarApps)
+        }
+        rawWindows.append(contentsOf: minimizedWindowsCache.map { window in
+            // 将 WindowInfo 转换为 rawWindows 需要的格式
+            return (info: [
+                kCGWindowNumber as String: window.id,
+                kCGWindowOwnerName as String: window.ownerName,
+                kCGWindowName as String: window.windowName,
+                kCGWindowOwnerPID as String: window.processId,
+                kCGWindowBounds as String: [
+                    "X": window.boundsX,
+                    "Y": window.boundsY,
+                    "Width": 0.0,
+                    "Height": 0.0
+                ]
+            ] as [String: Any], pid: window.processId, bx: window.boundsX, by: window.boundsY, isMinimized: true)
+        })
 
         // 按应用分配 index
         var appIndexMap: [pid_t: Int] = [:]
@@ -162,17 +187,40 @@ class WindowManager {
 
         windows = result
         windowsByApp = byApp
+        lastUpdateTime = now
     }
 
-    private func getMinimizedWindows(runningApps: [NSRunningApplication], menuBarApps: Set<pid_t>) -> [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat, isMinimized: Bool)] {
-        var minimized: [(info: [String: Any], pid: pid_t, bx: CGFloat, by: CGFloat, isMinimized: Bool)] = []
+    func refreshMinimizedWindows() {
+        let runningApps = NSWorkspace.shared.runningApplications
+        var menuBarApps = Set<pid_t>()
 
         for app in runningApps {
+            if app.activationPolicy == .accessory {
+                menuBarApps.insert(app.processIdentifier)
+            }
+        }
+
+        minimizedWindowsCache = getMinimizedWindows(runningApps: runningApps, menuBarApps: menuBarApps)
+        lastUpdateTime = Date.distantPast // 强制下次更新
+    }
+
+    private func getMinimizedWindows(runningApps: [NSRunningApplication], menuBarApps: Set<pid_t>) -> [WindowInfo] {
+        var minimized: [WindowInfo] = []
+
+        // 只检查前台应用和最近使用的应用，避免遍历所有应用
+        let recentApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .prefix(10) // 只检查前10个应用
+
+        var processedPids = Set<pid_t>()
+
+        for app in recentApps {
             let pid = app.processIdentifier
 
             if pid == getpid() { continue }
             if menuBarApps.contains(pid) { continue }
-            if app.activationPolicy == .accessory { continue }
+            if processedPids.contains(pid) { continue }
+            processedPids.insert(pid)
 
             let appRef = AXUIElementCreateApplication(pid)
             var value: CFTypeRef?
@@ -198,40 +246,22 @@ class WindowManager {
                 AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleValue)
                 let title = titleValue as? String ?? ""
 
-                // 获取窗口位置（最小化窗口位置可能为 0,0）
-                var posValue: CFTypeRef?
-                AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posValue)
-                var point = CGPoint.zero
-                if let pos = posValue {
-                    AXValueGetValue(pos as! AXValue, .cgPoint, &point)
-                }
-
-                // 获取窗口大小
-                var sizeValue: CFTypeRef?
-                AXUIElementCopyAttributeValue(axWindow, kAXSizeAttribute as CFString, &sizeValue)
-                var size = CGSize.zero
-                if let sizeRef = sizeValue {
-                    AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
-                }
-
-                // 创建一个伪窗口 ID（使用 PID 和位置组合）
-                // 注意：最小化窗口在 CGWindowList 中不存在，所以我们创建一个特殊的 ID
+                // 创建一个伪窗口 ID
                 let pseudoWindowID = CGWindowID(pid) * 1000 + CGWindowID(minimized.count)
 
-                let info: [String: Any] = [
-                    kCGWindowNumber as String: pseudoWindowID,
-                    kCGWindowOwnerName as String: app.localizedName ?? "Unknown",
-                    kCGWindowName as String: title,
-                    kCGWindowOwnerPID as String: pid,
-                    kCGWindowBounds as String: [
-                        "X": point.x,
-                        "Y": point.y,
-                        "Width": size.width,
-                        "Height": size.height
-                    ]
-                ]
+                let info = WindowInfo(
+                    id: pseudoWindowID,
+                    ownerName: app.localizedName ?? "Unknown",
+                    windowName: title,
+                    processId: pid,
+                    bundleIdentifier: app.bundleIdentifier,
+                    boundsX: 0,
+                    boundsY: 0,
+                    indexInApp: 1,
+                    isMinimized: true
+                )
 
-                minimized.append((info: info, pid: pid, bx: point.x, by: point.y, isMinimized: true))
+                minimized.append(info)
             }
         }
 

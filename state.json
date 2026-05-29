@@ -1,8 +1,8 @@
 {
-  "task": "支持显示最小化窗口并在切换时拉起",
+  "task": "更新设置页版本号并完善发布规则",
   "current_step": "完成",
   "status": "done",
-  "progress": "1.修改 WindowInfo 结构体 ✅ 2.添加获取最小化窗口方法 ✅ 3.修改 activateWindow 支持拉起 ✅ 4.更新 UI 显示 ✅ 5.构建验证 ✅",
-  "last_update": "2026-05-29 12:15",
+  "progress": "1.更新 SettingsView 版本号为 1.2.0 ✅ 2.完善 RELEASE.md 版本检查清单 ✅",
+  "last_update": "2026-05-29 16:00",
   "error": ""
 }

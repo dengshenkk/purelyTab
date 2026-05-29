@@ -246,3 +246,25 @@ https://github.com/dengshenkk/purelyTab
 - ✅ 最小化窗口显示在列表中
 - ✅ 切换时自动拉起最小化窗口
 - ✅ UI 显示最小化状态标识
+
+---
+
+## 2026-05-29 规范化发布流程
+
+### 问题
+- 发布时版本号未同步更新（package.sh 还是 1.0.0）
+- 缺少发布流程规范文档
+
+### 解决方案
+1. 修正版本号为 1.2.0（package.sh, release.sh）
+2. 创建 RELEASE.md 发布规则文档
+3. 规范化发布流程：版本更新 → release 分支 → 打包 → tag → release
+
+### 文件变更
+- `package.sh` - VERSION 更新为 1.2.0
+- `release.sh` - VERSION 更新为 1.2.0
+- `RELEASE.md` - 新增发布流程规范文档
+
+### 提交信息
+- commit: 8a0a8de
+- 已推送到 GitHub

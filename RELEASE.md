@@ -92,16 +92,22 @@ git branch -d release/X.Y.Z
 
 发布前检查以下文件的 VERSION 是否一致：
 
-| 文件 | 字段 | 说明 |
-|------|------|------|
-| `package.sh` | `VERSION` | 打包脚本版本 |
-| `release.sh` | `VERSION` | 发布脚本版本 |
-| `Info.plist` | `CFBundleVersion` | 应用版本（自动生成） |
-| `Info.plist` | `CFBundleShortVersionString` | 显示版本（自动生成） |
+| 文件 | 字段/位置 | 说明 | 当前版本 |
+|------|-----------|------|----------|
+| `package.sh` | `VERSION` | 打包脚本版本 | 1.2.0 |
+| `release.sh` | `VERSION` | 发布脚本版本 | 1.2.0 |
+| `SettingsView.swift` | 顶部标题 `v1.2.0` | 设置页顶部版本显示 | 1.2.0 |
+| `SettingsView.swift` | 关于区域 `1.2.0` | 设置页关于版本信息 | 1.2.0 |
+| `Info.plist` | `CFBundleVersion` | 应用版本（自动生成） | 1.2.0 |
+| `Info.plist` | `CFBundleShortVersionString` | 显示版本（自动生成） | 1.2.0 |
 
 ## 🔍 发布前检查清单
 
-- [ ] 版本号已更新（package.sh, release.sh）
+- [ ] 版本号已更新：
+  - [ ] `package.sh` - VERSION
+  - [ ] `release.sh` - VERSION
+  - [ ] `SettingsView.swift` - 顶部标题版本 (v1.x.x)
+  - [ ] `SettingsView.swift` - 关于区域版本 (1.x.x)
 - [ ] 所有功能已测试
 - [ ] 代码已提交并推送
 - [ ] Release 分支已创建
