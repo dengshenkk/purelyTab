@@ -31,6 +31,25 @@ struct SettingsView: View {
                 .padding()
             }
 
+            // 面板位置设置
+            GroupBox(label: Text("面板位置").fontWeight(.semibold)) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("显示位置:", selection: $settings.panelPosition) {
+                        Text("屏幕中央").tag("center")
+                        Text("跟随鼠标").tag("mouse")
+                    }
+                    .pickerStyle(.radioGroup)
+                    .onChange(of: settings.panelPosition) { _ in
+                        settings.save()
+                    }
+
+                    Text("跟随鼠标：鼠标在哪个显示器，就在哪个显示器显示面板")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
+
             // 快捷键设置
             GroupBox(label: Text("快捷键").fontWeight(.semibold)) {
                 VStack(alignment: .leading, spacing: 12) {
@@ -42,36 +61,6 @@ struct SettingsView: View {
                     .pickerStyle(.radioGroup)
                     .onChange(of: settings.modifierKey) { _ in
                         settings.save()
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("切换所有窗口:")
-                            Spacer()
-                            Text(getModifierSymbol() + "+Tab")
-                                .font(.system(.body, design: .monospaced))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.secondary.opacity(0.1))
-                                .cornerRadius(4)
-                        }
-
-                        HStack {
-                            Text("切换同应用窗口:")
-                            Spacer()
-                            Text(getModifierSymbol() + "+`")
-                                .font(.system(.body, design: .monospaced))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.secondary.opacity(0.1))
-                                .cornerRadius(4)
-                        }
-
-                        Text("打开列表后，按 ` 可循环到下一个窗口")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
                     }
                 }
                 .padding()
@@ -101,7 +90,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 450, height: 500)
+        .frame(width: 450, height: 520)
     }
 
     private func getModifierSymbol() -> String {

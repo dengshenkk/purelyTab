@@ -69,16 +69,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         lastFrontmostApp = NSWorkspace.shared.frontmostApplication
         windowManager.updateWindowList()
 
-        print("=== showSameAppWindowSwitcher ===")
         if let frontmostApp = lastFrontmostApp {
             let bundleId = frontmostApp.bundleIdentifier ?? ""
             windows = windowManager.getWindowsForApp(bundleId: bundleId)
-            print("BundleId: \(bundleId), windows found: \(windows.count)")
 
             if windows.count <= 1 {
-                // 如果只有一个窗口，显示所有窗口
                 windows = windowManager.windows
-                print("Falling back to all windows: \(windows.count)")
             }
 
             selectedIndex = 0
@@ -87,10 +83,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             selectedIndex = 0
         }
 
-        guard !windows.isEmpty else {
-            print("No windows to show")
-            return
-        }
+        guard !windows.isEmpty else { return }
 
         createAndShowWindowSwitcher(sameAppMode: true)
         hotkeyManager.setPanelVisible(true, sameApp: true)
@@ -154,18 +147,43 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard !windows.isEmpty else { return }
 
-        let screen = NSScreen.main ?? NSScreen.screens[0]
-        let screenFrame = screen.visibleFrame
-
         let panelWidth: CGFloat = 400
         let panelHeight: CGFloat = min(CGFloat(windows.count * 44 + 80), 500)
 
-        let panelRect = NSRect(
-            x: screenFrame.midX - panelWidth / 2,
-            y: screenFrame.midY - panelHeight / 2,
-            width: panelWidth,
-            height: panelHeight
-        )
+        let panelRect: NSRect
+        let settings = SettingsManager.shared
+
+        if settings.panelPosition == "mouse" {
+            // 跟随鼠标位置，显示在鼠标所在显示器
+            let mouseLocation = NSEvent.mouseLocation
+            var mouseScreen: NSScreen?
+            for screen in NSScreen.screens {
+                if screen.frame.contains(mouseLocation) {
+                    mouseScreen = screen
+                    break
+                }
+            }
+            let screen = mouseScreen ?? NSScreen.main ?? NSScreen.screens[0]
+            let screenFrame = screen.visibleFrame
+
+            panelRect = NSRect(
+                x: screenFrame.midX - panelWidth / 2,
+                y: screenFrame.midY - panelHeight / 2,
+                width: panelWidth,
+                height: panelHeight
+            )
+        } else {
+            // 屏幕中央（主显示器）
+            let screen = NSScreen.main ?? NSScreen.screens[0]
+            let screenFrame = screen.visibleFrame
+
+            panelRect = NSRect(
+                x: screenFrame.midX - panelWidth / 2,
+                y: screenFrame.midY - panelHeight / 2,
+                width: panelWidth,
+                height: panelHeight
+            )
+        }
 
         windowSwitcherPanel = NSPanel(
             contentRect: panelRect,
@@ -196,7 +214,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         windowSwitcherPanel?.contentView = hostingView
 
         windowSwitcherPanel?.makeKeyAndOrderFront(nil)
-        print("Panel shown with \(windows.count) windows")
     }
 
     func selectWindow(_ window: WindowInfo) {
