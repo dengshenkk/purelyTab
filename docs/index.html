@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="PurelyTab - 轻量高效的 macOS 窗口快速切换工具。替代系统原生 ⌘+Tab，支持多窗口切换、多显示器、主题定制。">
+  <meta property="og:title" content="PurelyTab — macOS 窗口切换利器">
+  <meta property="og:description" content="轻量高效的 macOS 窗口快速切换工具，纯 Swift 原生，MIT 开源。">
+  <meta property="og:image" content="https://raw.githubusercontent.com/dengshenkk/purelyTab/main/image.png">
+  <title>PurelyTab — macOS 窗口切换利器</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f7;
+      --card: #ffffff;
+      --text: #1d1d1f;
+      --text-secondary: #6e6e73;
+      --accent: #0071e3;
+      --accent-hover: #0077ed;
+      --border: #d2d2d7;
+      --radius: 14px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.08);
+      --max-width: 960px;
+    }
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", "PingFang SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .container { max-width: var(--max-width); margin: 0 auto; padding: 0 24px; }
+
+    /* ---- Language toggle ---- */
+    .lang-en,
+    .lang-block-en { display: none; }
+    body.en .lang-zh,
+    body.en .lang-block-zh { display: none; }
+    body.en .lang-en  { display: inline; }
+    body.en .lang-block-en { display: block; }
+
+    /* ---- Nav ---- */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      background: rgba(245,245,247,0.8);
+      border-bottom: 1px solid var(--border);
+    }
+    nav .container {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 52px;
+    }
+    nav .logo { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    nav .logo b { color: var(--accent); }
+    nav .nav-links { display: flex; gap: 16px; align-items: center; }
+    nav .nav-links a {
+      font-size: 13px; font-weight: 500; color: var(--text-secondary);
+      text-decoration: none; transition: color .2s;
+    }
+    nav .nav-links a:hover { color: var(--text); }
+
+    .lang-toggle {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 4px 10px; border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
+      font-size: 12px; font-weight: 600; color: var(--text-secondary);
+      cursor: pointer; transition: all .2s;
+      font-family: inherit; line-height: 1.4;
+    }
+    .lang-toggle:hover {
+      background: var(--card);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .lang-toggle .active-lang { color: var(--accent); }
+
+    /* ---- Hero ---- */
+    .hero {
+      text-align: center;
+      padding: 100px 0 60px;
+    }
+    .hero .app-icon {
+      width: 88px; height: 88px;
+      background: linear-gradient(135deg, #0071e3, #40a9ff);
+      border-radius: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-bottom: 28px;
+      box-shadow: 0 8px 32px rgba(0,113,227,0.25);
+      transition: transform .3s;
+    }
+    .hero .app-icon:hover { transform: scale(1.05); }
+    .hero .app-icon svg { width: 44px; height: 44px; fill: white; }
+    .hero h1 {
+      font-size: 52px; font-weight: 700; letter-spacing: -1.5px;
+      line-height: 1.1; margin-bottom: 12px;
+    }
+    .hero .subtitle {
+      font-size: 20px; font-weight: 400; color: var(--text-secondary);
+      max-width: 540px; margin: 0 auto 36px;
+    }
+    .hero .badge-row {
+      display: flex; justify-content: center; gap: 12px;
+      margin-bottom: 32px; flex-wrap: wrap;
+    }
+    .hero .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 20px;
+      background: var(--card); border: 1px solid var(--border);
+      font-size: 13px; color: var(--text-secondary);
+    }
+    .hero .badge strong { color: var(--text); font-weight: 600; }
+
+    .hero .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 40px;
+      font-size: 16px; font-weight: 600; text-decoration: none;
+      transition: all .2s;
+    }
+    .btn-primary {
+      background: var(--accent); color: white;
+      box-shadow: 0 4px 14px rgba(0,113,227,0.3);
+    }
+    .btn-primary:hover {
+      background: var(--accent-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(0,113,227,0.35);
+    }
+    .btn-secondary {
+      background: var(--card); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #e8e8ed; }
+
+    /* ---- Section ---- */
+    section { padding: 80px 0; }
+    section h2 {
+      font-size: 34px; font-weight: 700; letter-spacing: -0.5px;
+      text-align: center; margin-bottom: 16px;
+    }
+    section .section-desc {
+      text-align: center; color: var(--text-secondary);
+      font-size: 17px; max-width: 600px; margin: 0 auto 48px;
+    }
+    .section-alt { background: var(--card); }
+
+    /* ---- Screenshot ---- */
+    .screenshot-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+      align-items: center;
+    }
+    .screenshot-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      width: fit-content;
+    }
+    .screenshot-card img {
+      max-width: 100%; height: auto; display: block;
+    }
+    .screenshot-card .cap {
+      padding: 14px 18px;
+      font-size: 13px; font-weight: 500;
+      border-top: 1px solid var(--border);
+    }
+    .screenshot-card .cap .hint {
+      color: var(--text-secondary); font-weight: 400; font-size: 12px;
+    }
+
+    /* ---- Features ---- */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      padding: 28px 24px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .feature-card .icon { font-size: 28px; margin-bottom: 12px; }
+    .feature-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 6px; }
+    .feature-card p { font-size: 14px; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ---- Shortcuts ---- */
+    .shortcuts-grid {
+      max-width: 480px; margin: 0 auto;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .shortcuts-grid .kbd {
+      padding: 12px 20px;
+      font-family: "SF Mono", "Menlo", monospace;
+      font-size: 13px; font-weight: 500;
+      background: #fafafa;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .shortcuts-grid .desc {
+      padding: 12px 20px;
+      font-size: 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .shortcuts-grid .item:last-child .kbd,
+    .shortcuts-grid .item:last-child .desc { border-bottom: none; }
+
+    /* ---- Sponsor ---- */
+    .sponsor-grid {
+      display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+    }
+    .sponsor-card {
+      display: flex; flex-direction: column; align-items: center;
+      gap: 6px;
+      padding: 24px 36px;
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      text-decoration: none; color: var(--text);
+      transition: all .2s;
+      box-shadow: var(--shadow);
+    }
+    .sponsor-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+    }
+    .sponsor-card .emoji { font-size: 32px; }
+    .sponsor-card .name { font-size: 16px; font-weight: 600; }
+    .sponsor-card .region { font-size: 13px; color: var(--text-secondary); }
+
+    /* ---- Footer ---- */
+    footer {
+      text-align: center;
+      padding: 32px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* ---- Responsive ---- */
+    @media (max-width: 700px) {
+      .hero h1 { font-size: 36px; }
+      .hero .subtitle { font-size: 17px; }
+      .screenshot-grid { grid-template-columns: 1fr; }
+      .features-grid { grid-template-columns: 1fr; }
+      nav .nav-links a { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+<script>
+// 语言切换
+(function() {
+  const KEY = 'purelytab-lang';
+  const LANG = localStorage.getItem(KEY) || 'zh';
+  if (LANG === 'en') document.body.classList.add('en');
+
+  window.toggleLang = function() {
+    const isEn = document.body.classList.toggle('en');
+    localStorage.setItem(KEY, isEn ? 'en' : 'zh');
+    // 更新按钮文字
+    const btn = document.querySelector('.lang-toggle');
+    if (btn) btn.innerHTML = isEn
+      ? '<span class="active-lang">中</span> / EN'
+      : '中 / <span class="active-lang">EN</span>';
+  };
+})();
+</script>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <div class="logo"><b>Purely</b>Tab</div>
+    <div class="nav-links">
+      <a href="#features"><span class="lang-zh">功能</span><span class="lang-en">Features</span></a>
+      <a href="#screenshots"><span class="lang-zh">预览</span><span class="lang-en">Screenshots</span></a>
+      <a href="#usage"><span class="lang-zh">使用</span><span class="lang-en">Usage</span></a>
+      <a href="#sponsor"><span class="lang-zh">赞助</span><span class="lang-en">Sponsor</span></a>
+      <a href="https://github.com/dengshenkk/purelyTab" target="_blank">GitHub</a>
+      <button class="lang-toggle" onclick="toggleLang()"><span class="lang-zh">中 / <span class="active-lang">EN</span></span><span class="lang-en"><span class="active-lang">中</span> / EN</span></button>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <div class="app-icon">
+      <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+    </div>
+    <h1>
+      <span class="lang-zh">超越系统的 <span style="color:var(--accent)">⌘+Tab</span></span>
+      <span class="lang-en">Beyond the system's <span style="color:var(--accent)">⌘+Tab</span></span>
+    </h1>
+    <p class="subtitle">
+      <span class="lang-block-zh">轻量高效的 macOS 窗口切换工具，支持多窗口预览、同应用切换、多主题定制。<br>纯 Swift 原生 · 免费开源</span>
+      <span class="lang-block-en">A fast &amp; beautiful window switcher for macOS. Multi-window previews, same-app switching, customizable themes.<br>Pure Swift · Free &amp; Open Source</span>
+    </p>
+    <div class="badge-row">
+      <span class="badge">📦 <strong>v3.3.0</strong></span>
+      <span class="badge"><span class="lang-zh">🐦 纯 Swift</span><span class="lang-en">🐦 Pure Swift</span></span>
+      <span class="badge">🔓 MIT</span>
+      <span class="badge">🖥️ macOS 12+</span>
+    </div>
+    <div class="cta-row">
+      <a href="https://github.com/dengshenkk/purelyTab/releases/latest" class="btn btn-primary">
+        ⬇️ <span class="lang-zh">下载 DMG</span><span class="lang-en">Download DMG</span>
+      </a>
+      <a href="https://github.com/dengshenkk/purelyTab" class="btn btn-secondary" target="_blank">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        <span class="lang-zh">源代码</span><span class="lang-en">Source Code</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features">
+  <div class="container">
+    <h2><span class="lang-zh">为什么选择 PurelyTab？</span><span class="lang-en">Why PurelyTab?</span></h2>
+    <p class="section-desc">
+      <span class="lang-zh">系统原生的 ⌘+Tab 只能切换应用，PurelyTab 让你真正切换<strong>窗口</strong>。</span>
+      <span class="lang-en">macOS's ⌘+Tab switches apps. PurelyTab switches <strong>windows</strong>.</span>
+    </p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="icon">🚀</div>
+        <h3><span class="lang-zh">毫秒级响应</span><span class="lang-en">Instant</span></h3>
+        <p><span class="lang-zh">按下快捷键瞬间弹出，零延迟。优化的 AX 缓存架构，性能比同类快 13 倍。</span><span class="lang-en">Zero delay on trigger. Optimized AX cache delivers up to 13x performance vs alternatives.</span></p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🎯</div>
+        <h3><span class="lang-zh">同应用多窗口</span><span class="lang-en">Same-App Windows</span></h3>
+        <p><span class="lang-zh">⌘+\` 一键切换同一应用的多个窗口，浏览器标签页再多也不怕。</span><span class="lang-en">⌘+\` cycles through all windows of the current app. Perfect for multiple browser windows.</span></p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🎨</div>
+        <h3><span class="lang-zh">多主题定制</span><span class="lang-en">Customizable</span></h3>
+        <p><span class="lang-zh">毛玻璃半透明设计，背景色、选中色、圆角全部自由调整。</span><span class="lang-en">Translucent design. Background colors, selection colors, corner radius — all adjustable.</span></p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🖥️</div>
+        <h3><span class="lang-zh">多显示器</span><span class="lang-en">Multi-Monitor</span></h3>
+        <p><span class="lang-zh">跨屏幕无缝切换，支持固定中央或跟随鼠标位置。</span><span class="lang-en">Seamless across displays. Choose center-position or follow-your-mouse.</span></p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">🌏</div>
+        <h3><span class="lang-zh">中英双语</span><span class="lang-en">Bilingual</span></h3>
+        <p><span class="lang-zh">原生支持简体中文与 English，自动跟随系统语言设置。</span><span class="lang-en">Full Chinese &amp; English support. Auto-detects system language.</span></p>
+      </div>
+      <div class="feature-card">
+        <div class="icon">⚡</div>
+        <h3><span class="lang-zh">纯 Swift 原生</span><span class="lang-en">Native Swift</span></h3>
+        <p><span class="lang-zh">用 Swift 原生编写，没有 WebView 或 Electron 包袱，资源占用极低。</span><span class="lang-en">Written in pure Swift. No WebView, no Electron. Minimal resource usage.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Screenshots -->
+<section id="screenshots" class="section-alt">
+  <div class="container">
+    <h2><span class="lang-zh">预览</span><span class="lang-en">Screenshots</span></h2>
+    <p class="section-desc">
+      <span class="lang-zh">简洁直观的界面，上手即用。</span>
+      <span class="lang-en">Clean and intuitive. Ready to go.</span>
+    </p>
+    <div class="screenshot-grid">
+      <div class="screenshot-card">
+        <img src="./assets/screenshot/list.jpg" alt="PurelyTab 窗口切换列表" loading="lazy">
+        <div class="cap">⌘+Tab <span class="lang-zh"><span class="hint">— 所有窗口一目了然，方向键快速定位</span></span><span class="lang-en"><span class="hint">— All windows at a glance. Navigate with arrow keys.</span></span></div>
+      </div>
+      <div class="screenshot-card">
+        <img src="./assets/screenshot/similar.jpg" alt="同应用窗口切换" loading="lazy">
+        <div class="cap"><span class="lang-zh">同应用窗口</span><span class="lang-en">Same-App</span> <span class="lang-zh"><span class="hint">— ⌘+\` 快速切换</span></span><span class="lang-en"><span class="hint">— ⌘+\` to cycle</span></span></div>
+      </div>
+      <div class="screenshot-card">
+        <img src="./assets/screenshot/setting1.jpg" alt="设置界面" loading="lazy">
+        <div class="cap"><span class="lang-zh">个性化设置</span><span class="lang-en">Settings</span> <span class="lang-zh"><span class="hint">— 菜单栏、快捷键、赞助支持</span></span><span class="lang-en"><span class="hint">— Menu bar, shortcuts, sponsor</span></span></div>
+      </div>
+      <div class="screenshot-card">
+        <img src="./assets/screenshot/setting2.jpg" alt="设置界面 2" loading="lazy">
+        <div class="cap"><span class="lang-zh">个性化设置</span><span class="lang-en">Settings</span> <span class="lang-zh"><span class="hint">— 外观、主题、关于信息</span></span><span class="lang-en"><span class="hint">— Appearance, themes, about</span></span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Usage -->
+<section id="usage">
+  <div class="container">
+    <h2><span class="lang-zh">快捷键一览</span><span class="lang-en">Keyboard Shortcuts</span></h2>
+    <p class="section-desc">
+      <span class="lang-zh">熟悉的操作方式，零学习成本。修饰键也支持 ⌥ 和 ⌃ 自定义。</span>
+      <span class="lang-en">Familiar shortcuts, zero learning curve. ⌥ and ⌃ also supported.</span>
+    </p>
+    <div class="shortcuts-grid">
+      <div class="item"><div class="kbd">⌘ + Tab</div><div class="desc"><span class="lang-zh">打开切换器 / 向前循环</span><span class="lang-en">Open switcher / cycle forward</span></div></div>
+      <div class="item"><div class="kbd">⌘ + ⇧ + Tab</div><div class="desc"><span class="lang-zh">向后循环</span><span class="lang-en">Cycle backward</span></div></div>
+      <div class="item"><div class="kbd">⌘ + `</div><div class="desc"><span class="lang-zh">切换同应用窗口</span><span class="lang-en">Same-app windows</span></div></div>
+      <div class="item"><div class="kbd">← → ↑ ↓</div><div class="desc"><span class="lang-zh">在窗口之间导航</span><span class="lang-en">Navigate between windows</span></div></div>
+      <div class="item"><div class="kbd">Return</div><div class="desc"><span class="lang-zh">选择当前窗口</span><span class="lang-en">Select window</span></div></div>
+      <div class="item"><div class="kbd">Esc</div><div class="desc"><span class="lang-zh">取消</span><span class="lang-en">Cancel</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Download -->
+<section class="section-alt">
+  <div class="container" style="text-align:center;">
+    <h2><span class="lang-zh">开始使用</span><span class="lang-en">Get Started</span></h2>
+    <p class="section-desc">
+      <span class="lang-zh">系统要求：macOS 12.0+，Intel 或 Apple Silicon M 系列芯片。</span>
+      <span class="lang-en">Requires macOS 12.0+, Intel or Apple Silicon.</span>
+    </p>
+    <div style="display:flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+      <a href="https://github.com/dengshenkk/purelyTab/releases/latest" class="btn btn-primary">
+        ⬇️ <span class="lang-zh">下载 DMG</span><span class="lang-en">Download DMG</span>
+      </a>
+      <a href="https://github.com/dengshenkk/purelyTab" class="btn btn-secondary" target="_blank">
+        📖 <span class="lang-zh">源代码 / README</span><span class="lang-en">Source / README</span>
+      </a>
+    </div>
+    <p style="margin-top: 20px; font-size: 14px; color: var(--text-secondary);">
+      📥 <span class="lang-zh">下载 DMG → 拖入 Applications → 启动并授权辅助功能 → 按下 ⌘+Tab 开始使用</span>
+      <span class="lang-en">Download DMG → Drag to Applications → Grant permissions → Press ⌘+Tab</span>
+    </p>
+  </div>
+</section>
+
+<!-- Sponsor -->
+<section id="sponsor">
+  <div class="container" style="text-align:center;">
+    <h2>❤️ <span class="lang-zh">赞助支持</span><span class="lang-en">Sponsor</span></h2>
+    <p class="section-desc">
+      <span class="lang-zh">PurelyTab 完全免费开源。如果它提高了你的工作效率，欢迎赞助支持持续开发。</span>
+      <span class="lang-en">PurelyTab is free and open source. If it boosts your productivity, please consider sponsoring ❤️</span>
+    </p>
+    <div class="sponsor-grid">
+      <a href="https://github.com/sponsors/dengshenkk" class="sponsor-card" target="_blank" rel="noopener">
+        <div class="emoji">🌐</div>
+        <div class="name">GitHub Sponsors</div>
+        <div class="region"><span class="lang-zh">全球</span><span class="lang-en">Global</span></div>
+      </a>
+      <a href="https://afdian.com/a/purelytab" class="sponsor-card" target="_blank" rel="noopener">
+        <div class="emoji">⚡</div>
+        <div class="name"><span class="lang-zh">爱发电</span><span class="lang-en">Afdian</span></div>
+        <div class="region"><span class="lang-zh">中国大陆</span><span class="lang-en">China</span></div>
+      </a>
+    </div>
+    <p style="margin-top: 20px; font-size: 14px; color: var(--text-secondary);">
+      <span class="lang-zh">每一份赞助都是对开源的支持 🙏</span>
+      <span class="lang-en">Every sponsorship supports open source 🙏</span>
+    </p>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <p>
+      <a href="https://github.com/dengshenkk/purelyTab">GitHub</a> ·
+      <a href="https://github.com/dengshenkk/purelyTab/issues"><span class="lang-zh">反馈</span><span class="lang-en">Issues</span></a> ·
+      <a href="https://github.com/dengshenkk/purelyTab/discussions"><span class="lang-zh">讨论</span><span class="lang-en">Discussions</span></a> ·
+      <a href="#sponsor">❤️ <span class="lang-zh">赞助</span><span class="lang-en">Sponsor</span></a>
+    </p>
+    <p style="margin-top: 8px;">Made with ❤️ for macOS · MIT License</p>
+  </div>
+</footer>
+
+</body>
+</html>
