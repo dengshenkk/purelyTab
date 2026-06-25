@@ -17,7 +17,7 @@ struct SettingsView: View {
                         .foregroundColor(.secondary)
                 }
                 Spacer()
-                Text("v3.1.0")
+                Text("v1.0.0")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, 8)
@@ -121,7 +121,7 @@ struct SettingsView: View {
                             Divider()
 
                             InfoRow(label: "作者", value: "dengshenkk")
-                            InfoRow(label: "版本", value: "3.0.0")
+                            InfoRow(label: "版本", value: "1.0.0")
                             InfoRow(label: "系统要求", value: "macOS 12.0+")
 
                             HStack(spacing: 6) {
